@@ -28,7 +28,7 @@ just about anything.
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 #
-# $Id: backup,v 1.6 2001/07/11 17:53:42 steve Exp $
+# $Id: backup,v 1.7 2002/02/11 05:06:21 steve Exp $
 
 use strict;
 
@@ -41,7 +41,7 @@ use IO::Handle;
 
 use vars qw($backup_dir $config_file %conf $default_backup_command);
 use vars qw(@extraflags @hosts %host $maxchildren @children $done);
-use vars qw($debug $verbose $config_dir);
+use vars qw($debug $verbose $config_dir $timeout);
 
 sub read_config_file($$);
 sub read_host_conf($);
@@ -53,7 +53,7 @@ sub bold($);
 
 $default_backup_command="rsync -e 'ssh -c blowfish-cbc' -axH"
                       . " HOST:PATH/. ."
-                      . " --numeric-ids --timeout=600 --partial"
+                      . " --numeric-ids --timeout=TIMEOUT --partial"
                       . " --exclude /lost+found/ --exclude '*.mp3'"
 		      . " --exclude '*.iso' --exclude core EXTRAFLAGS";
 $maxchildren=undef;
@@ -109,6 +109,10 @@ useful when debugging problems, or it might not.
 
 This is equivalent to adding "debug=yes" to the config file.
 
+=item B<--timeout>
+
+Sets the I/O timeout in seconds for rsync.
+
 =back
 
 =cut
@@ -120,7 +124,9 @@ GetOptions("extraflags=s"   => \@extraflags,
 	   "verbose"        => \$verbose,
 	   "backupdir=s"    => \$backup_dir,
 	   "configfile=s"   => \$config_file,
-	   "configdir=s"    => \$config_dir);
+	   "configdir=s"    => \$config_dir,
+	   "timeout=i"      => \$timeout,
+);
 
 $debug=$debug || $ENV{'DEBUG'};
 
@@ -206,6 +212,14 @@ This is equivalent to the B<--configdir> command-line option.
 $config_dir=$config_dir
 	    || $conf{'configdir'}
             || (($debug ? "" : "/etc/") . "backup.d");
+
+=item B<timeout>
+
+This is equivalent to the B<--timeout> command-line option.
+
+=cut
+
+$timeout=$timeout || $conf{'timeout'};
 
 =back
 
@@ -465,6 +479,7 @@ and filesystem should be stored.
     }
     $command=~s/HOST/$hostname/g;
     $command=~s/PATH/$path/g;
+    $command=~s/TIMEOUT/$timeout/g;
 
     debug "Running";
     debug "    $command";
