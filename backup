@@ -28,7 +28,7 @@ just about anything.
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 #
-# $Id: backup,v 1.10 2002/05/27 19:30:43 steve Exp $
+# $Id: backup,v 1.11 2002/06/06 04:53:36 steve Exp $
 
 use strict;
 
@@ -42,6 +42,7 @@ use IO::Handle;
 use vars qw($backup_dir $config_file %conf $default_backup_command);
 use vars qw(@extraflags @hosts %host $maxchildren @children $done);
 use vars qw($debug $verbose $config_dir $timeout $rsync);
+use vars qw($daily $weekly $monthly);
 
 sub read_config_file($$);
 sub read_host_conf($);
@@ -101,6 +102,10 @@ Use I<filename> for the config file.  The default is F</etc/backup.conf>.
 Look for files describing what will be backed up under I<path>.  The
 default is F</etc/backup.d>.
 
+This script will look for directories named C<monthly>, C<weekly>,
+C<daily>, and C<unscheduled> under this directory.  The files must be
+under those directories.
+
 =item B<--verbose>
 
 Makes rsync more verbose (equivalent to C<--extraflags="--verbose
@@ -118,6 +123,19 @@ This is equivalent to adding "debug=yes" to the config file.
 
 Sets the I/O timeout in seconds for rsync.
 
+=item B<--daily>
+
+Run daily backups.  This is the default if no hosts or other schedule
+(C<--weekly> or C<--monthly>) are specified.
+
+=item B<--weekly>
+
+Run weekly backups.
+
+=item B<--monthly>
+
+Run monthly backups.
+
 =back
 
 =cut
@@ -131,6 +149,9 @@ GetOptions("extraflags=s"   => \@extraflags,
 	   "configfile=s"   => \$config_file,
 	   "configdir=s"    => \$config_dir,
 	   "timeout=i"      => \$timeout,
+	   "daily"          => \$daily,
+	   "weekly"         => \$weekly,
+	   "monthly"        => \$monthly,
 );
 
 $debug=$debug || $ENV{'DEBUG'};
@@ -243,13 +264,31 @@ The command is optional.
 
 =cut
 
-safe_chdir $config_dir or die "chdir($config_dir) failed: $!\n";
-my $dir=new DirHandle "." or die "Failed to open $config_dir: $!\n";
-for my $file ($dir->read)
-{
-    next if ($file=~/^\.\.?$/);
+$daily=$daily || !($weekly || $monthly);
 
-    $host{$file}=read_host_conf($file);
+debug("daily = $daily" . (defined($weekly) ? ", weekly = $weekly" : "")
+      . (defined($monthly) ? ", monthly = $monthly" : ""));
+
+safe_chdir $config_dir or die "chdir($config_dir) failed: $!\n";
+for my $type (qw(unscheduled monthly weekly daily))
+{
+    my $dir=new DirHandle $type
+        or warn "Failed to open $config_dir/$type: $!\n";
+
+    for my $file ($dir->read)
+    {
+        next if ($file=~/^\.\.?$/);
+
+	warn "Redefining " . $host{$file}->{'_schedule'}
+	   . " backup for $file as $type.  Previous settings will be ignored.\n"
+	    if (defined($host{$file}));
+
+        $host{$file}=read_host_conf("$type/$file");
+	warn "A _schedule filesystem exists for $file."
+	   . "  It will not be backed up.\n"
+	    if (defined($host{$file}->{'_schedule'}));
+	$host{$file}->{'_schedule'}=$type;
+    }
 }
 
 if (!keys(%host))
@@ -268,10 +307,34 @@ for my $signal (qw(HUP INT QUIT TERM CONT TSTP))
     $SIG{$signal}=\&kill_em_all;
 }
 
+if (!@hosts)
+{
+    @hosts=grep {
+            (defined($daily) && $daily)
+	        && $host{$_}->{"_schedule"} eq "daily"
+            or (defined($weekly) && $weekly)
+	        && $host{$_}->{"_schedule"} eq "weekly"
+            or (defined($monthly) && $monthly)
+	        && $host{$_}->{"_schedule"} eq "monthly"
+        } keys(%host);
+}
+
+if (!@hosts)
+{
+    print STDERR "No hosts scheduled for backup, exiting.\n";
+    exit 0;
+}
+
 alarm(30);
-for my $hostname (@hosts ? @hosts : keys(%host))
+for my $hostname (@hosts)
 {
     last if ($done);
+
+    if (!defined($host{$hostname}))
+    {
+	warn "Host '$hostname' specified on the command line is not defined!\n";
+	next;
+    }
 
     if ($maxchildren)
     {
@@ -301,7 +364,7 @@ for my $hostname (@hosts ? @hosts : keys(%host))
                 #$SIG{$signal}=sub { debug "Child got signal '$_[0]'."; $done=1; };
             }
             debug "[$$] Backing up $hostname...";
-            for my $path (keys(%{$host{$hostname}}))
+            for my $path (grep { $_ ne "_schedule" } keys(%{$host{$hostname}}))
             {
                 last if ($done);
                 backup($hostname, $path, @{$host{$hostname}->{$path}});
@@ -318,7 +381,7 @@ for my $hostname (@hosts ? @hosts : keys(%host))
     else
     {
         debug "Backing up $hostname...";
-        for my $path (keys(%{$host{$hostname}}))
+        for my $path (grep { $_ ne "_schedule" } keys(%{$host{$hostname}}))
         {
             backup($hostname, $path, @{$host{$hostname}->{$path}});
         }
