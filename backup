@@ -1,6 +1,34 @@
 #!/usr/bin/perl -w
+
+=head1 NAME
+
+backup - automates copies of remote filesystems
+
+=head1 SYNOPSIS
+
+B<backup> [ <options> ]
+
+=head1 DESCRIPTION
+
+This script is designed to take advantage of the fact that disk is
+cheap.  The idea is to have a system with enough disk to make a
+duplicate of whatever data you care about.
+
+By default, this will be done filesystem-by-filesystem with rsync
+running over ssh, but the mechanism is flexible enough to back up
+just about anything.
+
+=cut
+
+# Copyright (C) 2001 Steven Pritchard <steve@silug.org>
+# This program is free software; you can redistribute it
+# and/or modify it under the same terms as Perl itself.
 #
-# $Id: backup,v 1.5 2001/07/11 14:47:07 steve Exp $
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#
+# $Id: backup,v 1.6 2001/07/11 17:53:42 steve Exp $
 
 use strict;
 
@@ -30,6 +58,61 @@ $default_backup_command="rsync -e 'ssh -c blowfish-cbc' -axH"
 		      . " --exclude '*.iso' --exclude core EXTRAFLAGS";
 $maxchildren=undef;
 
+=head1 OPTIONS
+
+=over
+
+=item B<--extraflags=>I<flags>
+
+Add I<flags> to rsync (or whatever the backup command is set to).
+
+This is especially useful for occasionally running rsync with
+C<--delete> (C<--extraflags=--delete>).
+
+To add multiple options, use C<--extraflags="--option1 --option2"> or
+use C<--extraflags> multiple times.
+
+=item B<--host=>I<host>
+
+Only backup I<host>.  (This can be used multiple times to backup
+multiple hosts.)
+
+The default is to backup all hosts.
+
+=item B<--maxchildren=>I<number>
+
+Backup up to I<number> systems at once.
+
+=item B<--backupdir=>I<path>
+
+The script creates directories under I<path> for each system.
+
+=item B<--configfile=>I<filename>
+
+Use I<filename> for the config file.  The default is F</etc/backup.conf>.
+
+=item B<--configdir=>I<path>
+
+Look for files describing what will be backed up under I<path>.  The
+default is F</etc/backup.d>.
+
+=item B<--verbose>
+
+Makes rsync more verbose (equivalent to C<--extraflags="--verbose
+--progress">).  In a future revision, it might also make this script a
+bit more verbose.
+
+=item B<--debug>
+
+Spews lots of debugging information as the program runs.  It might be
+useful when debugging problems, or it might not.
+
+This is equivalent to adding "debug=yes" to the config file.
+
+=back
+
+=cut
+
 GetOptions("extraflags=s"   => \@extraflags,
            "host=s"         => \@hosts,
            "maxchildren=i"  => \$maxchildren,
@@ -45,10 +128,39 @@ $config_file=$config_file || (($debug ? "" : "/etc/") . "backup.conf");
 
 read_config_file($config_file, \%conf);
 
+=head1 FILES
+
+=over
+
+=item F</etc/backup.conf>
+
+Configuration options can be given in this file in the form
+
+    parameter = value
+
+=over
+
+=item B<debug>
+
+Setting this option to "yes" is equivalent to adding B<--debug> to the
+command-line.
+
+=cut
+
 $debug=1 if (defined($conf{'debug'}) and
              ($conf{'debug'}==1 or
               $conf{'debug'} eq "yes" or
               $conf{'debug'} eq "on"));
+
+push(@extraflags, "--verbose --progress")
+    if ($debug || ($verbose && -t(STDERR)));
+
+=item B<default command>
+
+This can be used to specify an alternative default command.  Certain
+special strings can be used, including C<DEFAULT>.  See L</"COMMANDS">.
+
+=cut
 
 if (defined($conf{'default command'}))
 {
@@ -56,11 +168,20 @@ if (defined($conf{'default command'}))
     $default_backup_command=$conf{'default command'};
 }
 
+=item B<backupdir>
+
+This is equivalent to the B<--backupdir> command-line option.
+
+=cut
+
 $backup_dir=$backup_dir || $conf{'backupdir'};
 die "No directory specified for backups!\n" if (!$backup_dir);
 
-push(@extraflags, "--verbose --progress")
-    if ($debug || ($verbose && -t(STDERR)));
+=item B<maxchildren>
+
+This is equivalent to the B<--maxchildren> command-line option.
+
+=cut
 
 if (!defined($maxchildren))
 {
@@ -76,9 +197,33 @@ if (!defined($maxchildren))
 $maxchildren=int($maxchildren);
 debug "\$maxchildren set to '$maxchildren'";
 
+=item B<configdir>
+
+This is equivalent to the B<--configdir> command-line option.
+
+=cut
+
 $config_dir=$config_dir
 	    || $conf{'configdir'}
             || (($debug ? "" : "/etc/") . "backup.d");
+
+=back
+
+=item F</etc/backup.d/*>
+
+Each host to be backed up should have a file under this directory.
+The file's name must be the name of the host to backup.
+
+The format of the file is
+
+    /path/to/backup	command
+
+The command is optional.
+
+=back
+
+=cut
+
 safe_chdir $config_dir or die "chdir($config_dir) failed: $!\n";
 my $dir=new DirHandle "." or die "Failed to open $config_dir: $!\n";
 for my $file ($dir->read)
@@ -176,7 +321,8 @@ sub read_config_file($$)
     my ($config_file, $conf)=@_;
 
     my $config=new FileHandle "<$config_file"
-	or die "Failed to open $config_file: $!\n";
+	or return;
+	#or die "Failed to open $config_file: $!\n";
 
     my $last;
     while (<$config>)
@@ -271,6 +417,37 @@ sub backup($$@)
 	        or die "safe_chdir '$backup_dir/$hostname/$path: $!\n";
 	}
     }
+
+=head1 COMMANDS
+
+Any commands to run specified in the configuration files will have the
+following substitutions performed on them:
+
+=over
+
+=item C<DEFAULT>
+
+This will be replaced with the default command.
+
+=item C<EXTRAFLAGS>
+
+This will be replaced with any flags specified with B<--extraflags> on
+the command line.
+
+=item C<HOST>
+
+This will be replaced with the name of the host being backed up.
+
+=item C<PATH>
+
+This will be replaced with the path being backed up.
+
+=back
+
+All commands are run from the directory where backups for that host
+and filesystem should be stored.
+
+=cut
 
     my $command="@command" || $default_backup_command;
 
@@ -397,3 +574,14 @@ sub kill_em_all
     $done=1
         if ($sig eq 'HUP' or $sig eq 'INT' or $sig eq 'QUIT' or $sig eq 'TERM');
 }
+
+=head1 SEE ALSO
+
+L<rsync(1)>, L<ssh(1)>, L<run1(1)>, L<mount(8)>, L<smbmount(8)>,
+L<umount(8)>
+
+=head1 AUTHOR
+
+Steven Pritchard <F<steve@silug.org>>
+
+=cut
