@@ -28,7 +28,7 @@ just about anything.
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 #
-# $Id: backup,v 1.9 2002/05/27 19:09:40 steve Exp $
+# $Id: backup,v 1.10 2002/05/27 19:30:43 steve Exp $
 
 use strict;
 
@@ -57,8 +57,9 @@ $rsync="rsync";
 $default_backup_command="RSYNC -e 'ssh -c blowfish-cbc' -axHS"
                       . " HOST:PATH/. ."
                       . " --numeric-ids --timeout=TIMEOUT --partial"
-                      . " --exclude /lost+found/ --exclude '*.mp3'"
-		      . " --exclude '*.iso' --exclude core --delete EXTRAFLAGS";
+                      . " --exclude /lost+found/ --exclude /.journal"
+		      . " --exclude '*.mp3' --exclude '*.iso'"
+		      . " --exclude core --delete EXTRAFLAGS";
 $maxchildren=undef;
 
 =head1 OPTIONS
