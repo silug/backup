@@ -28,7 +28,7 @@ just about anything.
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 #
-# $Id: backup,v 1.7 2002/02/11 05:06:21 steve Exp $
+# $Id: backup,v 1.8 2002/05/17 04:11:01 steve Exp $
 
 use strict;
 
@@ -36,12 +36,12 @@ use FileHandle;
 use DirHandle;
 use Carp;
 use Getopt::Long;
-use POSIX qw(pause);
+use POSIX;# qw(pause :errno_h);
 use IO::Handle;
 
 use vars qw($backup_dir $config_file %conf $default_backup_command);
 use vars qw(@extraflags @hosts %host $maxchildren @children $done);
-use vars qw($debug $verbose $config_dir $timeout);
+use vars qw($debug $verbose $config_dir $timeout $rsync);
 
 sub read_config_file($$);
 sub read_host_conf($);
@@ -50,12 +50,15 @@ sub my_system(@);
 sub safe_chdir($);
 sub debug(@);
 sub bold($);
+sub touch(@);
+sub mkdirp($$);
 
-$default_backup_command="rsync -e 'ssh -c blowfish-cbc' -axH"
+$rsync="rsync";
+$default_backup_command="RSYNC -e 'ssh -c blowfish-cbc' -axH"
                       . " HOST:PATH/. ."
                       . " --numeric-ids --timeout=TIMEOUT --partial"
                       . " --exclude /lost+found/ --exclude '*.mp3'"
-		      . " --exclude '*.iso' --exclude core EXTRAFLAGS";
+		      . " --exclude '*.iso' --exclude core --delete EXTRAFLAGS";
 $maxchildren=undef;
 
 =head1 OPTIONS
@@ -66,8 +69,9 @@ $maxchildren=undef;
 
 Add I<flags> to rsync (or whatever the backup command is set to).
 
-This is especially useful for occasionally running rsync with
-C<--delete> (C<--extraflags=--delete>).
+In the past, this was especially useful for occasionally running rsync
+with C<--delete> (C<--extraflags=--delete>), but now that this program
+saves backup copies of everything, that's part of the default command.
 
 To add multiple options, use C<--extraflags="--option1 --option2"> or
 use C<--extraflags> multiple times.
@@ -301,6 +305,7 @@ for my $hostname (@hosts ? @hosts : keys(%host))
                 last if ($done);
                 backup($hostname, $path, @{$host{$hostname}->{$path}});
             }
+            touch "$backup_dir/.$hostname-last-updated";
             wait;
 	    exit 0;
 	}
@@ -316,6 +321,7 @@ for my $hostname (@hosts ? @hosts : keys(%host))
         {
             backup($hostname, $path, @{$host{$hostname}->{$path}});
         }
+        touch "$backup_dir/.$hostname-last-updated";
     }
 }
 
@@ -481,6 +487,41 @@ and filesystem should be stored.
     $command=~s/PATH/$path/g;
     $command=~s/TIMEOUT/$timeout/g;
 
+    if ($command=~/RSYNC/)
+    {
+	my $rsync_command=$rsync;
+
+	if (-f "$backup_dir/.$hostname-last-updated")
+	{
+	    my $mtime=(stat("$backup_dir/.$hostname-last-updated"))[9];
+	    # Sanity check - I'm implementing this feature at
+	    # time_t==1019229210
+	    # Fri Apr 19 10:13:30 CDT 2002
+	    # We'll use the value, but at least there will be a warning.
+	    warn "Timestamp on $backup_dir/.$hostname-last-updated, "
+	        . scalar(localtime($mtime)), ", makes no sense.\n"
+		if ($mtime<1000000000);
+	    my @then=localtime($mtime);
+	    my $last=sprintf("%d%02d%02dT%02d%02d%02d",
+		             $then[5]+1900, # year
+			     $then[4]+1,    # month
+			     $then[3],      # day
+			     $then[2],      # hour
+			     $then[1],      # minute
+			     $then[0]);     # second
+	    my $archive_path="$backup_dir/.archive/$hostname/$last/$path";
+	    mkdirp $archive_path, 0700
+	    #mkdir "$backup_dir/.archive", 0700;
+	    #mkdir "$backup_dir/.archive/$hostname", 0700;
+	    #mkdir "$backup_dir/.archive/$hostname/$last", 0700;
+	        or die "Failed to create $archive_path: $!\n";
+	        #if (!-d "$backup_dir/.archive/$hostname/$last");
+	    $rsync_command.=" -b --backup-dir"
+                          . " $archive_path";
+	}
+        $command=~s/RSYNC/$rsync_command/g;
+    }
+
     debug "Running";
     debug "    $command";
     debug "in $backup_dir/$hostname/$path";
@@ -588,6 +629,53 @@ sub kill_em_all
 
     $done=1
         if ($sig eq 'HUP' or $sig eq 'INT' or $sig eq 'QUIT' or $sig eq 'TERM');
+}
+
+sub touch(@)
+{
+    my $now=time;
+    for my $file (@_)
+    {
+	debug "touch($file)";
+	# Create the file if it doesn't already exist.
+        my $fh=new FileHandle $file, O_WRONLY|O_CREAT|O_EXCL;
+	if ($fh)
+	{
+	    close($fh);
+	}
+	else
+	{
+            utime($now, $now, $file) or die "utime() failed on $file: $!\n";
+	}
+    }
+}
+
+sub mkdirp($$)
+{
+    my ($dir, $mode)=@_;
+
+    my @parts=split '/', $dir;
+
+    my $path="";
+    $path="/" if ($dir=~/^\//);
+
+    for my $part (@parts)
+    {
+	next if ($part eq "");
+
+	$path.="$part";
+        if (!-d $path)
+	{
+            debug "Doing mkdir($path, " . sprintf("%04o", $mode) . ")...";
+            if (!mkdir $path, $mode)
+	    {
+	        return 0 if ($! != EEXIST);
+	    }
+	}
+	$path.="/";
+    }
+
+    return 1;
 }
 
 =head1 SEE ALSO
