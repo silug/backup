@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 #
-# $Id: genhost.pl,v 1.1 2001/07/11 19:00:17 steve Exp $
+# $Id: genhost.pl,v 1.2 2001/07/11 20:54:38 steve Exp $
 
 use strict;
 
@@ -19,7 +19,7 @@ open(DF, "ssh $host df |");
 while (<DF>)
 {
     my @foo=split;
-    push(@fs, $foo[$#foo]) if ($foo[0]=~/^\/dev\//);
+    push(@fs, $foo[$#foo]) if ($foo[0]=~/^\/dev\// and $foo[$#foo] ne "/tmp");
 }
 
 close(DF);
