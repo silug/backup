@@ -1,28 +1,42 @@
 #!/usr/bin/perl -w
+#
+# $Id: backup,v 1.2 2001/07/10 15:24:12 steve Exp $
 
 use strict;
 
 use FileHandle;
 use Carp;
 use Getopt::Long;
+use POSIX qw(pause);
+use IO::Handle;
 
 use vars qw($backup_dir $config_file $default_backup_command);
-use vars qw(@extraflags @hosts);
+use vars qw(@extraflags @hosts %host $maxchildren @children $done);
 
+sub backup($$@);
+sub my_system(@);
 sub safe_chdir($);
 sub debug(@);
 sub bold($);
 
 $backup_dir="/bucket/image";
 $config_file="config";
-$default_backup_command="rsync -e 'ssh -c blowfish-cbc' -a"
-		      . (($ENV{'DEBUG'} || -t) ? "v" : "")
-                      . "xHP HOST:PATH/. ."
-                      . " --numeric-ids"
+$default_backup_command="rsync -e 'ssh -c blowfish-cbc' -axH"
+                      . " HOST:PATH/. ."
+                      . " --numeric-ids --timeout=600 --partial"
                       . " --exclude /lost+found/ --exclude '*.mp3'"
 		      . " --exclude '*.iso' --exclude core EXTRAFLAGS";
+$maxchildren=0;
 
-GetOptions("extraflags=s" => \@extraflags, "host=s" => \@hosts);
+GetOptions("extraflags=s"   => \@extraflags,
+           "host=s"         => \@hosts,
+           "maxchildren=i"  => \$maxchildren);
+
+push(@extraflags, "--verbose --progress") if ($ENV{'DEBUG'} || -t(STDERR));
+
+debug "\$maxchildren currently '$maxchildren'...";
+$maxchildren=int($maxchildren);
+debug "\$maxchildren set to '$maxchildren'";
 
 my $config=new FileHandle "<$config_file"
     or die "Failed to open $config_file: $!\n";
@@ -33,7 +47,7 @@ while (<$config>)
     chomp;
     s/(?<!\\)#.*$//; # Strip comments ("\" escapes "#")
     $_=$last.$_ if ($last);
-    if (s/\\$//)
+    if (s/\\\s*$//)
     {
         $last=$_;
 	next;
@@ -45,7 +59,91 @@ while (<$config>)
     next if (/^\s*$/); # Skip blank lines
 
     my ($hostname,$path,@command)=split;
-    next if (@hosts and !grep /^${hostname}$/, @hosts);
+    warn "Re-defining $hostname:$path, line $.\n"
+        if (defined($host{$hostname}) && defined($host{$hostname}->{$path}));
+    $host{$hostname}->{$path}=[@command];
+}
+close($config);
+
+@children=();
+$done=0;
+
+$SIG{'CHLD'}=\&reaper;
+for my $signal (qw(HUP INT QUIT TERM CONT TSTP))
+{
+    $SIG{$signal}=\&kill_em_all;
+}
+
+for my $hostname (@hosts ? @hosts : keys(%host))
+{
+    last if ($done);
+
+    if ($maxchildren)
+    {
+        debug "Checking for available slots...";
+	while (@children >= $maxchildren)
+	{
+	    # *FIXME* - A SIGCHLD right now would be a Bad Thing.
+	    debug "Waiting for slot to open...";
+	    pause; # But after this it would be OK.
+	}
+	my $pid=fork;
+	if ($pid > 0)
+	{
+	    push(@children, $pid);
+	    debug scalar(@children), " children...";
+	}
+	elsif ($pid == 0)
+	{
+            for my $signal (qw(TSTP CHLD))
+            {
+                $SIG{$signal}='DEFAULT';
+            }
+            for my $signal (qw(HUP INT QUIT TERM CONT))
+            {
+                #$SIG{$signal}=sub { debug "Child got signal '$_[0]'."; $done=1; $SIG{$_[0]}='DEFAULT'; kill $_[0], $$; };
+                #$SIG{$signal}=sub { debug "Child got signal '$_[0]'."; $done=1; };
+            }
+            debug "[$$] Backing up $hostname...";
+            for my $path (keys(%{$host{$hostname}}))
+            {
+                last if ($done);
+                backup($hostname, $path, @{$host{$hostname}->{$path}});
+            }
+            wait;
+	    exit 0;
+	}
+	else
+	{
+	    warn "fork() failed: $!";
+	}
+    }
+    else
+    {
+        debug "Backing up $hostname...";
+        for my $path (keys(%{$host{$hostname}}))
+        {
+            backup($hostname, $path, @{$host{$hostname}->{$path}});
+        }
+    }
+}
+
+if ($maxchildren)
+{
+    while (@children)
+    {
+        debug "Waiting for children to exit...";
+	pause;
+    }
+}
+
+debug "Exiting...";
+
+sub backup($$@)
+{
+    my ($hostname,$path,@command)=@_;
+
+    debug "\t$hostname:$path";
 
     safe_chdir $backup_dir or die "safe_chdir '$backup_dir' failed: $!\n";
 
@@ -85,8 +183,10 @@ while (<$config>)
     $command=~s/HOST/$hostname/g;
     $command=~s/PATH/$path/g;
 
-    debug "Running\n    $command\nin $backup_dir/$hostname/$path\n";
-    my $ret=system $command;
+    debug "Running";
+    debug "    $command";
+    debug "in $backup_dir/$hostname/$path";
+    my $ret=my_system $command;
     if ($ret != 0)
     {
         print STDERR "'$command' failed: ";
@@ -107,6 +207,26 @@ while (<$config>)
             }
             print STDERR "\n";
         }
+    }
+}
+
+sub my_system(@)
+{
+    my $pid=fork;
+
+    if ($pid > 0)
+    {
+        @children=($pid);
+        waitpid($pid, 0);
+	return $?;
+    }
+    elsif ($pid == 0)
+    {
+        exec @_ or return -1;
+    }
+    else
+    {
+        return -1;
     }
 }
 
@@ -135,10 +255,39 @@ sub debug(@)
     {
         print STDERR bold("d: "), @_, "\n";
     }
+    STDERR->flush;
 }
 
 sub bold($)
 {
     return @_ if (!-t STDERR);
     return "\033[37;1m" . $_[0] . "\033[0m";
+}
+
+sub reaper
+{
+    for (my $n=0;$n<@children;$n++)
+    {
+        if (waitpid($children[$n], 1)) # *FIXME* Should be WNOHANG (not 1)
+	{
+	    debug "[$$] PID $children[$n] exited.";
+	    splice(@children, $n, 1);
+	}
+    }
+}
+
+sub kill_em_all
+{
+    my $sig=$_[0];
+
+    debug "[$$] Got signal '$sig'";
+
+    for my $child (@children)
+    {
+        debug "[$$] killing PID $child...";
+        kill $sig, $child;
+    }
+
+    $done=1
+        if ($sig eq 'HUP' or $sig eq 'INT' or $sig eq 'QUIT' or $sig eq 'TERM');
 }
