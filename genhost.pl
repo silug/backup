@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 #
-# $Id: genhost.pl,v 1.2 2001/07/11 20:54:38 steve Exp $
+# $Id: genhost.pl,v 1.3 2001/07/16 20:11:54 steve Exp $
 
 use strict;
 
@@ -23,6 +23,8 @@ while (<DF>)
 }
 
 close(DF);
+
+print "# filesystem\tcommand\n";
 
 for my $fs (@fs)
 {

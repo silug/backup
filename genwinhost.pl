@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 #
-# $Id: genwinhost.pl,v 1.1 2001/07/11 20:21:29 steve Exp $
+# $Id: genwinhost.pl,v 1.2 2001/07/16 20:11:54 steve Exp $
 
 use strict;
 
@@ -62,7 +62,7 @@ $fs	trap "umount /mnt/HOST/PATH" EXIT ; \\
 	mount -t smbfs '//HOST/PATH\$' \\
 	    /mnt/HOST/PATH            \\ # This can't.
 	    -o username=administrator,password=$pass,workgroup=$domain,ro && \\
-	rsync -aW /mnt/HOST/PATH/. . --numeric-ids \\
+	rsync -aW /mnt/HOST/PATH/. . --numeric-ids --partial --timeout=600 \\
 	    --exclude /RECYCLER/ --exclude /pagefile.sys \\
 	    EXTRAFLAGS
 END
