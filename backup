@@ -1,0 +1,144 @@
+#!/usr/bin/perl -w
+
+use strict;
+
+use FileHandle;
+use Carp;
+use Getopt::Long;
+
+use vars qw($backup_dir $config_file $default_backup_command);
+use vars qw(@extraflags @hosts);
+
+sub safe_chdir($);
+sub debug(@);
+sub bold($);
+
+$backup_dir="/bucket/image";
+$config_file="config";
+$default_backup_command="rsync -e 'ssh -c blowfish-cbc' -a"
+		      . (($ENV{'DEBUG'} || -t) ? "v" : "")
+                      . "xHP HOST:PATH/. ."
+                      . " --numeric-ids"
+                      . " --exclude /lost+found/ --exclude '*.mp3'"
+		      . " --exclude '*.iso' --exclude core EXTRAFLAGS";
+
+GetOptions("extraflags=s" => \@extraflags, "host=s" => \@hosts);
+
+my $config=new FileHandle "<$config_file"
+    or die "Failed to open $config_file: $!\n";
+
+my $last;
+while (<$config>)
+{
+    chomp;
+    s/(?<!\\)#.*$//; # Strip comments ("\" escapes "#")
+    $_=$last.$_ if ($last);
+    if (s/\\$//)
+    {
+        $last=$_;
+	next;
+    }
+    else
+    {
+        $last="";
+    }
+    next if (/^\s*$/); # Skip blank lines
+
+    my ($hostname,$path,@command)=split;
+    next if (@hosts and !grep /^${hostname}$/, @hosts);
+
+    safe_chdir $backup_dir or die "safe_chdir '$backup_dir' failed: $!\n";
+
+    if (!safe_chdir $hostname)
+    {
+        mkdir $hostname, 0700;
+	safe_chdir $hostname or die "safe_chdir '$backup_dir/$hostname': $!\n";
+    }
+
+    if (!safe_chdir "./$path")
+    {
+        debug "need to create './$path'";
+        for my $part (split '/', $path)
+	{
+            next if (!$part);
+	    debug "creating '$part'";
+	    mkdir $part, 0700;
+	    safe_chdir $part
+	        or die "safe_chdir '$backup_dir/$hostname/$path: $!\n";
+	}
+    }
+
+    my $command="@command" || $default_backup_command;
+
+    $command=~s/DEFAULT/$default_backup_command/g;
+    if (@extraflags and $command=~/EXTRAFLAGS/)
+    {
+	my $extraflags="@extraflags";
+        $command=~s/EXTRAFLAGS/$extraflags/g;
+    }
+    else
+    {
+        $command=~s/\s+EXTRAFLAGS//g;
+        $command=~s/EXTRAFLAGS\s+//g;
+        $command=~s/EXTRAFLAGS//g;
+    }
+    $command=~s/HOST/$hostname/g;
+    $command=~s/PATH/$path/g;
+
+    debug "Running\n    $command\nin $backup_dir/$hostname/$path\n";
+    my $ret=system $command;
+    if ($ret != 0)
+    {
+        print STDERR "'$command' failed: ";
+        if ($ret == -1)
+        {
+            print STDERR "$!\n";
+        }
+        else
+        {
+            if ($ret & 127)
+            {
+                print STDERR "exited on signal ", $ret & 127;
+                print STDERR ", core dumped" if ($ret & 128);
+            }
+            else
+            {
+                print STDERR "exit value ", $ret >> 8;
+            }
+            print STDERR "\n";
+        }
+    }
+}
+
+sub safe_chdir($)
+{
+    my $dir=shift;
+
+    if (!$dir)
+    {
+        carp "empty directory passed to safe_chdir, ignoring";
+    }
+    else
+    {
+        chdir $dir;
+    }
+}
+
+sub debug(@)
+{
+    return if (!defined($ENV{'DEBUG'}));
+    if (!@_)
+    {
+        print STDERR "\n";
+    }
+    else
+    {
+        print STDERR bold("d: "), @_, "\n";
+    }
+}
+
+sub bold($)
+{
+    return @_ if (!-t STDERR);
+    return "\033[37;1m" . $_[0] . "\033[0m";
+}
