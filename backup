@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 #
-# $Id: backup,v 1.4 2001/07/10 20:43:07 steve Exp $
+# $Id: backup,v 1.5 2001/07/11 14:47:07 steve Exp $
 
 use strict;
 
@@ -50,8 +50,11 @@ $debug=1 if (defined($conf{'debug'}) and
               $conf{'debug'} eq "yes" or
               $conf{'debug'} eq "on"));
 
-$default_backup_command=$conf{'default command'}
-    if (defined($conf{'default command'}));
+if (defined($conf{'default command'}))
+{
+    $conf{'default command'}=~s/DEFAULT/$default_backup_command/g;
+    $default_backup_command=$conf{'default command'};
+}
 
 $backup_dir=$backup_dir || $conf{'backupdir'};
 die "No directory specified for backups!\n" if (!$backup_dir);
@@ -95,7 +98,7 @@ if (!keys(%host))
 $done=0;
 
 $SIG{'CHLD'}=\&reaper;
-$SIG{'ALRM'}=sub { debug "Caught SIGALRM"; alarm(30); kill('CHLD', $$); };
+$SIG{'ALRM'}=sub { debug "[$$] Caught SIGALRM"; alarm(30); kill('CHLD', $$); };
 for my $signal (qw(HUP INT QUIT TERM CONT TSTP))
 {
     $SIG{$signal}=\&kill_em_all;
@@ -123,6 +126,7 @@ for my $hostname (@hosts ? @hosts : keys(%host))
 	}
 	elsif ($pid == 0)
 	{
+	    $SIG{'ALRM'}='IGNORE'; # Not necessary, but what the hell?
             for my $signal (qw(TSTP CHLD))
             {
                 $SIG{$signal}='DEFAULT';
