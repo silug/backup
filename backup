@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/perl
 
 =head1 NAME
 
@@ -28,8 +28,9 @@ just about anything.
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 #
-# $Id: backup,v 1.11 2002/06/06 04:53:36 steve Exp $
+# $Id: backup,v 1.12 2005/10/03 18:10:07 steve Exp $
 
+use warnings;
 use strict;
 
 use FileHandle;
@@ -59,8 +60,8 @@ $default_backup_command="RSYNC -e 'ssh -c blowfish-cbc' -axHS"
                       . " HOST:PATH/. ."
                       . " --numeric-ids --timeout=TIMEOUT --partial"
                       . " --exclude /lost+found/ --exclude /.journal"
-		      . " --exclude '*.mp3' --exclude '*.iso'"
-		      . " --exclude core --delete EXTRAFLAGS";
+                      . " --exclude '*.mp3' --exclude '*.iso'"
+                      . " --exclude core --delete EXTRAFLAGS";
 $maxchildren=undef;
 
 =head1 OPTIONS
@@ -143,15 +144,15 @@ Run monthly backups.
 GetOptions("extraflags=s"   => \@extraflags,
            "host=s"         => \@hosts,
            "maxchildren=i"  => \$maxchildren,
-	   "debug"          => \$debug,
-	   "verbose"        => \$verbose,
-	   "backupdir=s"    => \$backup_dir,
-	   "configfile=s"   => \$config_file,
-	   "configdir=s"    => \$config_dir,
-	   "timeout=i"      => \$timeout,
-	   "daily"          => \$daily,
-	   "weekly"         => \$weekly,
-	   "monthly"        => \$monthly,
+           "debug"          => \$debug,
+           "verbose"        => \$verbose,
+           "backupdir=s"    => \$backup_dir,
+           "configfile=s"   => \$config_file,
+           "configdir=s"    => \$config_dir,
+           "timeout=i"      => \$timeout,
+           "daily"          => \$daily,
+           "weekly"         => \$weekly,
+           "monthly"        => \$monthly,
 );
 
 $debug=$debug || $ENV{'DEBUG'};
@@ -194,8 +195,7 @@ special strings can be used, including C<DEFAULT>.  See L</"COMMANDS">.
 
 =cut
 
-if (defined($conf{'default command'}))
-{
+if (defined($conf{'default command'})) {
     $conf{'default command'}=~s/DEFAULT/$default_backup_command/g;
     $default_backup_command=$conf{'default command'};
 }
@@ -215,15 +215,11 @@ This is equivalent to the B<--maxchildren> command-line option.
 
 =cut
 
-if (!defined($maxchildren))
-{
-    if (defined($conf{'maxchildren'}))
-    {
+if (!defined($maxchildren)) {
+    if (defined($conf{'maxchildren'})) {
         $maxchildren=$conf{'maxchildren'};
-    }
-    else
-    {
-	$maxchildren=0;
+    } else {
+        $maxchildren=0;
     }
 }
 $maxchildren=int($maxchildren);
@@ -236,7 +232,7 @@ This is equivalent to the B<--configdir> command-line option.
 =cut
 
 $config_dir=$config_dir
-	    || $conf{'configdir'}
+            || $conf{'configdir'}
             || (($debug ? "" : "/etc/") . "backup.d");
 
 =item B<timeout>
@@ -256,7 +252,7 @@ The file's name must be the name of the host to backup.
 
 The format of the file is
 
-    /path/to/backup	command
+    /path/to/backup     command
 
 The command is optional.
 
@@ -270,29 +266,26 @@ debug("daily = $daily" . (defined($weekly) ? ", weekly = $weekly" : "")
       . (defined($monthly) ? ", monthly = $monthly" : ""));
 
 safe_chdir $config_dir or die "chdir($config_dir) failed: $!\n";
-for my $type (qw(unscheduled monthly weekly daily))
-{
+for my $type (qw(unscheduled monthly weekly daily)) {
     my $dir=new DirHandle $type
         or warn "Failed to open $config_dir/$type: $!\n";
 
-    for my $file ($dir->read)
-    {
+    for my $file ($dir->read) {
         next if ($file=~/^\.\.?$/);
 
-	warn "Redefining " . $host{$file}->{'_schedule'}
-	   . " backup for $file as $type.  Previous settings will be ignored.\n"
-	    if (defined($host{$file}));
+        warn "Redefining " . $host{$file}->{'_schedule'}
+           . " backup for $file as $type.  Previous settings will be ignored.\n"
+            if (defined($host{$file}));
 
         $host{$file}=read_host_conf("$type/$file");
-	warn "A _schedule filesystem exists for $file."
-	   . "  It will not be backed up.\n"
-	    if (defined($host{$file}->{'_schedule'}));
-	$host{$file}->{'_schedule'}=$type;
+        warn "A _schedule filesystem exists for $file."
+           . "  It will not be backed up.\n"
+            if (defined($host{$file}->{'_schedule'}));
+        $host{$file}->{'_schedule'}=$type;
     }
 }
 
-if (!keys(%host))
-{
+if (!keys(%host)) {
     print STDERR "No hosts defined, exiting...\n";
     exit 0;
 }
@@ -302,145 +295,118 @@ $done=0;
 
 $SIG{'CHLD'}=\&reaper;
 $SIG{'ALRM'}=sub { debug "[$$] Caught SIGALRM"; alarm(30); kill('CHLD', $$); };
-for my $signal (qw(HUP INT QUIT TERM CONT TSTP))
-{
+for my $signal (qw(HUP INT QUIT TERM CONT TSTP)) {
     $SIG{$signal}=\&kill_em_all;
 }
 
-if (!@hosts)
-{
+if (!@hosts) {
     @hosts=grep {
             (defined($daily) && $daily)
-	        && $host{$_}->{"_schedule"} eq "daily"
+                && $host{$_}->{"_schedule"} eq "daily"
             or (defined($weekly) && $weekly)
-	        && $host{$_}->{"_schedule"} eq "weekly"
+                && $host{$_}->{"_schedule"} eq "weekly"
             or (defined($monthly) && $monthly)
-	        && $host{$_}->{"_schedule"} eq "monthly"
+                && $host{$_}->{"_schedule"} eq "monthly"
         } keys(%host);
 }
 
-if (!@hosts)
-{
+if (!@hosts) {
     print STDERR "No hosts scheduled for backup, exiting.\n";
     exit 0;
 }
 
 alarm(30);
-for my $hostname (@hosts)
-{
+for my $hostname (@hosts) {
     last if ($done);
 
-    if (!defined($host{$hostname}))
-    {
-	warn "Host '$hostname' specified on the command line is not defined!\n";
-	next;
+    if (!defined($host{$hostname})) {
+        warn "Host '$hostname' specified on the command line is not defined!\n";
+        next;
     }
 
-    if ($maxchildren)
-    {
+    if ($maxchildren) {
         debug "Checking for available slots...";
-	while (@children >= $maxchildren)
-	{
-	    # *FIXME* - A SIGCHLD right now would be a Bad Thing.
-	    debug "Waiting for slot to open...";
-	    pause; # But after this it would be OK.
-	}
-	my $pid=fork;
-	if ($pid > 0)
-	{
-	    push(@children, $pid);
-	    debug scalar(@children), " children...";
-	}
-	elsif ($pid == 0)
-	{
-	    $SIG{'ALRM'}='IGNORE'; # Not necessary, but what the hell?
-            for my $signal (qw(TSTP CHLD))
-            {
+        while (@children >= $maxchildren) {
+            # *FIXME* - A SIGCHLD right now would be a Bad Thing.
+            debug "Waiting for slot to open...";
+            pause; # But after this it would be OK.
+        }
+        my $pid=fork;
+        if ($pid > 0) {
+            push(@children, $pid);
+            debug scalar(@children), " children...";
+        } elsif ($pid == 0) {
+            $SIG{'ALRM'}='IGNORE'; # Not necessary, but what the hell?
+            for my $signal (qw(TSTP CHLD)) {
                 $SIG{$signal}='DEFAULT';
             }
-            for my $signal (qw(HUP INT QUIT TERM CONT))
-            {
+            for my $signal (qw(HUP INT QUIT TERM CONT)) {
                 #$SIG{$signal}=sub { debug "Child got signal '$_[0]'."; $done=1; $SIG{$_[0]}='DEFAULT'; kill $_[0], $$; };
                 #$SIG{$signal}=sub { debug "Child got signal '$_[0]'."; $done=1; };
             }
             debug "[$$] Backing up $hostname...";
-            for my $path (grep { $_ ne "_schedule" } keys(%{$host{$hostname}}))
-            {
+            for my $path (grep { $_ ne "_schedule" } keys(%{$host{$hostname}})) {
                 last if ($done);
                 backup($hostname, $path, @{$host{$hostname}->{$path}});
             }
             touch "$backup_dir/.$hostname-last-updated";
             wait;
-	    exit 0;
-	}
-	else
-	{
-	    warn "fork() failed: $!";
-	}
-    }
-    else
-    {
+            exit 0;
+        } else {
+            warn "fork() failed: $!";
+        }
+    } else {
         debug "Backing up $hostname...";
-        for my $path (grep { $_ ne "_schedule" } keys(%{$host{$hostname}}))
-        {
+        for my $path (grep { $_ ne "_schedule" } keys(%{$host{$hostname}})) {
             backup($hostname, $path, @{$host{$hostname}->{$path}});
         }
         touch "$backup_dir/.$hostname-last-updated";
     }
 }
 
-if ($maxchildren)
-{
-    while (@children)
-    {
+if ($maxchildren) {
+    while (@children) {
         debug "Waiting for children to exit...";
-	pause;
+        pause;
     }
 }
 
 debug "Exiting...";
 
-sub read_config_file($$)
-{
+sub read_config_file($$) {
     my ($config_file, $conf)=@_;
 
     my $config=new FileHandle "<$config_file"
-	or return;
-	#or die "Failed to open $config_file: $!\n";
+        or return;
+        #or die "Failed to open $config_file: $!\n";
 
     my $last;
-    while (<$config>)
-    {
-	chomp;
-	s/(?<!\\)#.*$//; # Strip comments ("\" escapes "#")
-	$_=$last.$_ if ($last);
-	if (s/\\\s*$//)
-	{
-	    $last=$_;
-	    next;
-	}
-	else
-	{
-	    $last="";
-	}
-	next if (/^\s*$/); # Skip blank lines
+    while (<$config>) {
+        chomp;
+        s/(?<!\\)#.*$//; # Strip comments ("\" escapes "#")
+        $_=$last.$_ if ($last);
+        if (s/\\\s*$//) {
+            $last=$_;
+            next;
+        } else {
+            $last="";
+        }
+        next if (/^\s*$/); # Skip blank lines
 
-	my ($param,$value)=/^\s*([^=]*?)\s*=\s*(.*?)\s*$/;
-	if (!$param)
-	{
-	    warn "Skipping bogus line $. of $config_file...\n";
-	    next;
-	}
-	warn "Redefining $param! ($config_file line $.)\n"
-	    if (defined($conf->{$param}));
-	$conf->{$param}=$value;
-	debug $param, "=", bold("'"), $value, bold("'");
+        my ($param,$value)=/^\s*([^=]*?)\s*=\s*(.*?)\s*$/;
+        if (!$param) {
+            warn "Skipping bogus line $. of $config_file...\n";
+            next;
+        }
+        warn "Redefining $param! ($config_file line $.)\n"
+            if (defined($conf->{$param}));
+        $conf->{$param}=$value;
+        debug $param, "=", bold("'"), $value, bold("'");
     }
     close($config);
 }
 
-sub read_host_conf($)
-{
+sub read_host_conf($) {
     my $config_file=shift;
 
     my $config=new FileHandle "<$config_file"
@@ -449,18 +415,14 @@ sub read_host_conf($)
     debug "Reading file '$config_file'...";
 
     my (%conf,$last);
-    while (<$config>)
-    {
+    while (<$config>) {
         chomp;
         s/(?<!\\)#.*$//; # Strip comments ("\" escapes "#")
         $_=$last.$_ if ($last);
-        if (s/\\\s*$//)
-        {
+        if (s/\\\s*$//) {
             $last=$_;
-	    next;
-        }
-        else
-        {
+            next;
+        } else {
             $last="";
         }
         next if (/^\s*$/); # Skip blank lines
@@ -475,31 +437,27 @@ sub read_host_conf($)
     return \%conf;
 }
 
-sub backup($$@)
-{
+sub backup($$@) {
     my ($hostname,$path,@command)=@_;
 
     debug "\t$hostname:$path";
 
     safe_chdir $backup_dir or die "safe_chdir '$backup_dir' failed: $!\n";
 
-    if (!safe_chdir $hostname)
-    {
+    if (!safe_chdir $hostname) {
         mkdir $hostname, 0700;
-	safe_chdir $hostname or die "safe_chdir '$backup_dir/$hostname': $!\n";
+        safe_chdir $hostname or die "safe_chdir '$backup_dir/$hostname': $!\n";
     }
 
-    if (!safe_chdir "./$path")
-    {
+    if (!safe_chdir "./$path") {
         debug "need to create './$path'";
-        for my $part (split '/', $path)
-	{
+        for my $part (split '/', $path) {
             next if (!$part);
-	    debug "creating '$part'";
-	    mkdir $part, 0700;
-	    safe_chdir $part
-	        or die "safe_chdir '$backup_dir/$hostname/$path: $!\n";
-	}
+            debug "creating '$part'";
+            mkdir $part, 0700;
+            safe_chdir $part
+                or die "safe_chdir '$backup_dir/$hostname/$path: $!\n";
+        }
     }
 
 =head1 COMMANDS
@@ -536,13 +494,10 @@ and filesystem should be stored.
     my $command="@command" || $default_backup_command;
 
     $command=~s/DEFAULT/$default_backup_command/g;
-    if (@extraflags and $command=~/EXTRAFLAGS/)
-    {
-	my $extraflags="@extraflags";
+    if (@extraflags and $command=~/EXTRAFLAGS/) {
+        my $extraflags="@extraflags";
         $command=~s/EXTRAFLAGS/$extraflags/g;
-    }
-    else
-    {
+    } else {
         $command=~s/\s+EXTRAFLAGS//g;
         $command=~s/EXTRAFLAGS\s+//g;
         $command=~s/EXTRAFLAGS//g;
@@ -551,38 +506,36 @@ and filesystem should be stored.
     $command=~s/PATH/$path/g;
     $command=~s/TIMEOUT/$timeout/g;
 
-    if ($command=~/RSYNC/)
-    {
-	my $rsync_command=$rsync;
+    if ($command=~/RSYNC/) {
+        my $rsync_command=$rsync;
 
-	if (-f "$backup_dir/.$hostname-last-updated")
-	{
-	    my $mtime=(stat("$backup_dir/.$hostname-last-updated"))[9];
-	    # Sanity check - I'm implementing this feature at
-	    # time_t==1019229210
-	    # Fri Apr 19 10:13:30 CDT 2002
-	    # We'll use the value, but at least there will be a warning.
-	    warn "Timestamp on $backup_dir/.$hostname-last-updated, "
-	        . scalar(localtime($mtime)), ", makes no sense.\n"
-		if ($mtime<1000000000);
-	    my @then=localtime($mtime);
-	    my $last=sprintf("%d%02d%02dT%02d%02d%02d",
-		             $then[5]+1900, # year
-			     $then[4]+1,    # month
-			     $then[3],      # day
-			     $then[2],      # hour
-			     $then[1],      # minute
-			     $then[0]);     # second
-	    my $archive_path="$backup_dir/.archive/$hostname/$last/$path";
-	    mkdirp $archive_path, 0700
-	    #mkdir "$backup_dir/.archive", 0700;
-	    #mkdir "$backup_dir/.archive/$hostname", 0700;
-	    #mkdir "$backup_dir/.archive/$hostname/$last", 0700;
-	        or die "Failed to create $archive_path: $!\n";
-	        #if (!-d "$backup_dir/.archive/$hostname/$last");
-	    $rsync_command.=" -b --backup-dir"
+        if (-f "$backup_dir/.$hostname-last-updated") {
+            my $mtime=(stat("$backup_dir/.$hostname-last-updated"))[9];
+            # Sanity check - I'm implementing this feature at
+            # time_t==1019229210
+            # Fri Apr 19 10:13:30 CDT 2002
+            # We'll use the value, but at least there will be a warning.
+            warn "Timestamp on $backup_dir/.$hostname-last-updated, "
+                . scalar(localtime($mtime)), ", makes no sense.\n"
+                if ($mtime<1000000000);
+            my @then=localtime($mtime);
+            my $last=sprintf("%d%02d%02dT%02d%02d%02d",
+                             $then[5]+1900, # year
+                             $then[4]+1,    # month
+                             $then[3],      # day
+                             $then[2],      # hour
+                             $then[1],      # minute
+                             $then[0]);     # second
+            my $archive_path="$backup_dir/.archive/$hostname/$last/$path";
+            mkdirp $archive_path, 0700
+            #mkdir "$backup_dir/.archive", 0700;
+            #mkdir "$backup_dir/.archive/$hostname", 0700;
+            #mkdir "$backup_dir/.archive/$hostname/$last", 0700;
+                or die "Failed to create $archive_path: $!\n";
+                #if (!-d "$backup_dir/.archive/$hostname/$last");
+            $rsync_command.=" -b --backup-dir"
                           . " $archive_path";
-	}
+        }
         $command=~s/RSYNC/$rsync_command/g;
     }
 
@@ -590,22 +543,15 @@ and filesystem should be stored.
     debug "    $command";
     debug "in $backup_dir/$hostname/$path";
     my $ret=my_system $command;
-    if ($ret != 0)
-    {
+    if ($ret != 0) {
         print STDERR "'$command' failed: ";
-        if ($ret == -1)
-        {
+        if ($ret == -1) {
             print STDERR "$!\n";
-        }
-        else
-        {
-            if ($ret & 127)
-            {
+        } else {
+            if ($ret & 127) {
                 print STDERR "exited on signal ", $ret & 127;
                 print STDERR ", core dumped" if ($ret & 128);
-            }
-            else
-            {
+            } else {
                 print STDERR "exit value ", $ret >> 8;
             }
             print STDERR "\n";
@@ -613,80 +559,61 @@ and filesystem should be stored.
     }
 }
 
-sub my_system(@)
-{
+sub my_system(@) {
     my $pid=fork;
 
-    if ($pid > 0)
-    {
+    if ($pid > 0) {
         @children=($pid);
         waitpid($pid, 0);
-	return $?;
-    }
-    elsif ($pid == 0)
-    {
+        return $?;
+    } elsif ($pid == 0) {
         exec @_ or return -1;
-    }
-    else
-    {
+    } else {
         return -1;
     }
 }
 
-sub safe_chdir($)
-{
+sub safe_chdir($) {
     my $dir=shift;
 
-    if (!$dir)
-    {
+    if (!$dir) {
         carp "empty directory passed to safe_chdir, ignoring";
-    }
-    else
-    {
+    } else {
         chdir $dir;
     }
 }
 
-sub debug(@)
-{
+sub debug(@) {
     return if (!$debug);
-    if (!@_)
-    {
+    if (!@_) {
         print STDERR "\n";
-    }
-    else
-    {
+    } else {
         print STDERR bold("d: "), @_, "\n";
     }
     STDERR->flush;
 }
 
-sub bold($)
-{
+sub bold($) {
     return @_ if (!-t STDERR);
     return "\033[37;1m" . $_[0] . "\033[0m";
 }
 
-sub reaper
-{
-    for (my $n=0;$n<@children;$n++)
-    {
-        if (waitpid($children[$n], 1)!=0) # *FIXME* Should be WNOHANG (not 1)
-	{
-	    debug "[$$] PID $children[$n] exited.";
-	    splice(@children, $n, 1);
-	}
+sub reaper {
+    for (my $n=0;$n<@children;$n++) {
+        # *FIXME* Should be WNOHANG (not 1)
+        if (waitpid($children[$n], 1)!=0) {
+            debug "[$$] PID $children[$n] exited.";
+            splice(@children, $n, 1);
+        }
     }
 }
 
-sub kill_em_all
-{
+sub kill_em_all {
     my $sig=$_[0];
 
     debug "[$$] Got signal '$sig'";
 
-    for my $child (@children)
-    {
+    for my $child (@children) {
         debug "[$$] killing PID $child...";
         kill $sig, $child;
     }
@@ -695,27 +622,21 @@ sub kill_em_all
         if ($sig eq 'HUP' or $sig eq 'INT' or $sig eq 'QUIT' or $sig eq 'TERM');
 }
 
-sub touch(@)
-{
+sub touch(@) {
     my $now=time;
-    for my $file (@_)
-    {
-	debug "touch($file)";
-	# Create the file if it doesn't already exist.
+    for my $file (@_) {
+        debug "touch($file)";
+        # Create the file if it doesn't already exist.
         my $fh=new FileHandle $file, O_WRONLY|O_CREAT|O_EXCL;
-	if ($fh)
-	{
-	    close($fh);
-	}
-	else
-	{
+        if ($fh) {
+            close($fh);
+        } else {
             utime($now, $now, $file) or die "utime() failed on $file: $!\n";
-	}
+        }
     }
 }
 
-sub mkdirp($$)
-{
+sub mkdirp($$) {
     my ($dir, $mode)=@_;
 
     my @parts=split '/', $dir;
@@ -723,20 +644,17 @@ sub mkdirp($$)
     my $path="";
     $path="/" if ($dir=~/^\//);
 
-    for my $part (@parts)
-    {
-	next if ($part eq "");
+    for my $part (@parts) {
+        next if ($part eq "");
 
-	$path.="$part";
-        if (!-d $path)
-	{
+        $path.="$part";
+        if (!-d $path) {
             debug "Doing mkdir($path, " . sprintf("%04o", $mode) . ")...";
-            if (!mkdir $path, $mode)
-	    {
-	        return 0 if ($! != EEXIST);
-	    }
-	}
-	$path.="/";
+            if (!mkdir $path, $mode) {
+                return 0 if ($! != EEXIST);
+            }
+        }
+        $path.="/";
     }
 
     return 1;
@@ -752,3 +670,5 @@ L<umount(8)>
 Steven Pritchard <F<steve@silug.org>>
 
 =cut
+
+# vi: set ai et:
