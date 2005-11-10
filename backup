@@ -28,7 +28,7 @@ just about anything.
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 #
-# $Id: backup,v 1.14 2005/11/10 18:20:42 steve Exp $
+# $Id: backup,v 1.15 2005/11/10 22:59:27 steve Exp $
 
 use warnings;
 use strict;
@@ -269,8 +269,12 @@ debug("daily = $daily" . (defined($weekly) ? ", weekly = $weekly" : "")
 
 safe_chdir $config_dir or die "chdir($config_dir) failed: $!\n";
 for my $type (qw(unscheduled monthly weekly daily)) {
-    my $dir=new DirHandle $type
-        or warn "Failed to open $config_dir/$type: $!\n";
+    my $dir=new DirHandle $type;
+
+    if (!defined($dir)) {
+        warn "Failed to open $config_dir/$type: $!\n";
+        next;
+    }
 
     for my $file ($dir->read) {
         next if ($file=~/^\.\.?$/);
