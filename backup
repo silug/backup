@@ -28,7 +28,7 @@ just about anything.
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 #
-# $Id: backup,v 1.12 2005/10/03 18:10:07 steve Exp $
+# $Id: backup,v 1.13 2005/11/10 17:47:58 steve Exp $
 
 use warnings;
 use strict;
@@ -40,10 +40,10 @@ use Getopt::Long;
 use POSIX;# qw(pause :errno_h);
 use IO::Handle;
 
-use vars qw($backup_dir $config_file %conf $default_backup_command);
-use vars qw(@extraflags @hosts %host $maxchildren @children $done);
-use vars qw($debug $verbose $config_dir $timeout $rsync);
-use vars qw($daily $weekly $monthly);
+our ($backup_dir,$config_file,%conf,$default_backup_command);
+our (@extraflags,@hosts,%host,$maxchildren,@children,$done);
+our ($debug,$verbose,$config_dir,$timeout,$rsync);
+our ($daily,$weekly,$monthly);
 
 sub read_config_file($$);
 sub read_host_conf($);
@@ -54,6 +54,8 @@ sub debug(@);
 sub bold($);
 sub touch(@);
 sub mkdirp($$);
+sub linktree($$);
+sub dup_dir($$);
 
 $rsync="rsync";
 $default_backup_command="RSYNC -e 'ssh -c blowfish-cbc' -axHS"
@@ -526,15 +528,21 @@ and filesystem should be stored.
                              $then[2],      # hour
                              $then[1],      # minute
                              $then[0]);     # second
-            my $archive_path="$backup_dir/.archive/$hostname/$last/$path";
-            mkdirp $archive_path, 0700
+            #my $archive_path="$backup_dir/.archive/$hostname/$last/$path";
+            #mkdirp $archive_path, 0700
             #mkdir "$backup_dir/.archive", 0700;
             #mkdir "$backup_dir/.archive/$hostname", 0700;
             #mkdir "$backup_dir/.archive/$hostname/$last", 0700;
-                or die "Failed to create $archive_path: $!\n";
+            #    or die "Failed to create $archive_path: $!\n";
                 #if (!-d "$backup_dir/.archive/$hostname/$last");
-            $rsync_command.=" -b --backup-dir"
-                          . " $archive_path";
+            #$rsync_command.=" -b --backup-dir"
+            #              . " $archive_path";
+            if (!-d "$backup_dir/.archive/$hostname/$last") {
+                debug "Archiving $backup_dir/$hostname as "
+                    . "$backup_dir/.archive/$hostname/$last";
+                dup_dir "$backup_dir/$hostname",
+                    "$backup_dir/.archive/$hostname/$last";
+            }
         }
         $command=~s/RSYNC/$rsync_command/g;
     }
@@ -658,6 +666,49 @@ sub mkdirp($$) {
     }
 
     return 1;
+}
+
+sub linktree($$) {
+    my ($source,$target)=@_;
+
+    my $dh=new DirHandle $source;
+    if (!defined($dh)) {
+        warn "Failed to open $source: $!\n";
+        return;
+    }
+
+    for my $file ($dh->read) {
+        next if ($file eq "." or $file eq "..");
+
+        my $oldfile=$source . "/" . $file;
+        my $newfile=$oldfile;
+        $newfile=~s/^$source/$target/;
+
+        my @buf=lstat($oldfile);
+        if (!@buf) {
+            warn "lstat($oldfile) failed: $!\n";
+            return;
+        }
+
+        if (-d(_)) {
+            dup_dir($oldfile, $newfile);
+        } else {
+            link($oldfile, $newfile)
+                or warn "Failed to link $oldfile to $newfile: $!\n";
+        }
+    }
+}
+
+sub dup_dir($$) {
+    my ($source, $target)=@_;
+
+    my @buf=stat($source) or die "$source: $!\n";
+    mkdirp($target, $buf[2]) or die "mkdir($target) failed: $!\n";
+    chown($buf[4], $buf[5], $target)
+        or warn "Failed to set owner/group on $target: $!\n";
+    linktree($source, $target);
+    utime($buf[8], $buf[9], $target)
+        or warn "Failed to set time on $target: $!\n";
 }
 
 =head1 SEE ALSO
