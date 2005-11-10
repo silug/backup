@@ -28,7 +28,7 @@ just about anything.
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 #
-# $Id: backup,v 1.13 2005/11/10 17:47:58 steve Exp $
+# $Id: backup,v 1.14 2005/11/10 18:20:42 steve Exp $
 
 use warnings;
 use strict;
@@ -521,7 +521,7 @@ and filesystem should be stored.
                 . scalar(localtime($mtime)), ", makes no sense.\n"
                 if ($mtime<1000000000);
             my @then=localtime($mtime);
-            my $last=sprintf("%d%02d%02dT%02d%02d%02d",
+            my $last=sprintf("%d/%02d/%02d/%02d%02d%02d",
                              $then[5]+1900, # year
                              $then[4]+1,    # month
                              $then[3],      # day
