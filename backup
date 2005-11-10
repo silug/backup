@@ -28,7 +28,7 @@ just about anything.
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 #
-# $Id: backup,v 1.15 2005/11/10 22:59:27 steve Exp $
+# $Id: backup,v 1.16 2005/11/10 23:13:02 steve Exp $
 
 use warnings;
 use strict;
@@ -511,44 +511,34 @@ and filesystem should be stored.
     $command=~s/HOST/$hostname/g;
     $command=~s/PATH/$path/g;
     $command=~s/TIMEOUT/$timeout/g;
+    $command=~s/RSYNC/$rsync/g;
 
-    if ($command=~/RSYNC/) {
-        my $rsync_command=$rsync;
+    if (-f "$backup_dir/.$hostname-last-updated") {
+        my $mtime=(stat("$backup_dir/.$hostname-last-updated"))[9];
 
-        if (-f "$backup_dir/.$hostname-last-updated") {
-            my $mtime=(stat("$backup_dir/.$hostname-last-updated"))[9];
-            # Sanity check - I'm implementing this feature at
-            # time_t==1019229210
-            # Fri Apr 19 10:13:30 CDT 2002
-            # We'll use the value, but at least there will be a warning.
-            warn "Timestamp on $backup_dir/.$hostname-last-updated, "
-                . scalar(localtime($mtime)), ", makes no sense.\n"
-                if ($mtime<1000000000);
-            my @then=localtime($mtime);
-            my $last=sprintf("%d/%02d/%02d/%02d%02d%02d",
-                             $then[5]+1900, # year
-                             $then[4]+1,    # month
-                             $then[3],      # day
-                             $then[2],      # hour
-                             $then[1],      # minute
-                             $then[0]);     # second
-            #my $archive_path="$backup_dir/.archive/$hostname/$last/$path";
-            #mkdirp $archive_path, 0700
-            #mkdir "$backup_dir/.archive", 0700;
-            #mkdir "$backup_dir/.archive/$hostname", 0700;
-            #mkdir "$backup_dir/.archive/$hostname/$last", 0700;
-            #    or die "Failed to create $archive_path: $!\n";
-                #if (!-d "$backup_dir/.archive/$hostname/$last");
-            #$rsync_command.=" -b --backup-dir"
-            #              . " $archive_path";
-            if (!-d "$backup_dir/.archive/$hostname/$last") {
-                debug "Archiving $backup_dir/$hostname as "
-                    . "$backup_dir/.archive/$hostname/$last";
-                dup_dir "$backup_dir/$hostname",
-                    "$backup_dir/.archive/$hostname/$last";
-            }
+        # Sanity check - I'm implementing this feature at
+        # time_t==1019229210
+        # Fri Apr 19 10:13:30 CDT 2002
+        # We'll use the value, but at least there will be a warning.
+        warn "Timestamp on $backup_dir/.$hostname-last-updated, "
+            . scalar(localtime($mtime)), ", makes no sense.\n"
+            if ($mtime<1000000000);
+
+        my @then=localtime($mtime);
+        my $last=sprintf("%d/%02d/%02d/%02d%02d%02d",
+                         $then[5]+1900, # year
+                         $then[4]+1,    # month
+                         $then[3],      # day
+                         $then[2],      # hour
+                         $then[1],      # minute
+                         $then[0]);     # second
+
+        if (!-d "$backup_dir/.archive/$hostname/$last") {
+            debug "Archiving $backup_dir/$hostname as "
+                . "$backup_dir/.archive/$hostname/$last";
+            dup_dir "$backup_dir/$hostname",
+                "$backup_dir/.archive/$hostname/$last";
         }
-        $command=~s/RSYNC/$rsync_command/g;
     }
 
     debug "Running";
