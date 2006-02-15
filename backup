@@ -28,7 +28,7 @@ just about anything.
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 #
-# $Id: backup,v 1.16 2005/11/10 23:13:02 steve Exp $
+# $Id: backup,v 1.17 2006/02/15 21:02:07 steve Exp $
 
 use warnings;
 use strict;
@@ -676,7 +676,8 @@ sub linktree($$) {
 
         my $oldfile=$source . "/" . $file;
         my $newfile=$oldfile;
-        $newfile=~s/^$source/$target/;
+        $newfile=~s/^\Q$source\E/$target/;
+        debug "$oldfile => $newfile";
 
         my @buf=lstat($oldfile);
         if (!@buf) {
