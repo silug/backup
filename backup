@@ -28,7 +28,7 @@ just about anything.
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 #
-# $Id: backup,v 1.17 2006/02/15 21:02:07 steve Exp $
+# $Id: backup,v 1.18 2008/01/09 17:07:43 steve Exp $
 
 use warnings;
 use strict;
@@ -538,6 +538,8 @@ and filesystem should be stored.
                 . "$backup_dir/.archive/$hostname/$last";
             dup_dir "$backup_dir/$hostname",
                 "$backup_dir/.archive/$hostname/$last";
+        } else {
+            debug "$backup_dir/.archive/$hostname/$last exists, skipping.\n";
         }
     }
 
