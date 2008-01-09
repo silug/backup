@@ -1,13 +1,12 @@
 #!/usr/bin/perl -w
 #
-# $Id: genhost.pl,v 1.3 2001/07/16 20:11:54 steve Exp $
+# $Id: genhost.pl,v 1.4 2008/01/09 17:10:47 steve Exp $
 
 use strict;
 
 my $host=shift;
 
-if (!$host)
-{
+if (!$host) {
     print STDERR "Usage: genhost.pl <hostname>\n";
     exit 1;
 }
@@ -16,8 +15,7 @@ my @fs;
 
 open(DF, "ssh $host df |");
 
-while (<DF>)
-{
+while (<DF>) {
     my @foo=split;
     push(@fs, $foo[$#foo]) if ($foo[0]=~/^\/dev\// and $foo[$#foo] ne "/tmp");
 }
@@ -26,44 +24,39 @@ close(DF);
 
 print "# filesystem\tcommand\n";
 
-for my $fs (@fs)
-{
+for my $fs (@fs) {
     print "$fs";
     my @children=&find_children($fs, @fs);
-    if (@children)
-    {
+    if (@children) {
         print "\tDEFAULT";
-	for my $child (@children)
-	{
-	    print " --exclude $child";
-	}
+        for my $child (@children) {
+            print " --exclude $child";
+        }
     }
     print "\n";
 }
 
-sub find_children
-{
+sub find_children {
     my ($fs, @fs)=@_;
 
     my @children;
 
-    for my $child (@fs)
-    {
-	next if ($child eq $fs);
-	if ($child=~/^$fs\// or $fs eq "/")
-	{
-	    $child=~s/^$fs//;
-	    $child="/$child/";
-	    $child=~s,^//+,/,;
-	    $child=~s,//+$,/,;
-	    push(@children, $child);
-	}
+    for my $child (@fs) {
+        next if ($child eq $fs);
+        if ($child=~/^$fs\// or $fs eq "/") {
+            $child=~s/^$fs//;
+            $child="/$child/";
+            $child=~s,^//+,/,;
+            $child=~s,//+$,/,;
+            push(@children, $child);
+        }
     }
 
-    for (my $n=0;$n<@children;$n++)
-    {
-	@children=grep { $_ eq $children[$n] or !/^$children[$n]/ } @children;
+    for (my $n=0;$n<@children;$n++) {
+        @children=grep { $_ eq $children[$n] or !/^$children[$n]/ } @children;
     }
 
     return @children;
 }
+
+# vi: set ai et:
