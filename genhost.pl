@@ -1,8 +1,9 @@
 #!/usr/bin/perl -w
 #
-# $Id: genhost.pl,v 1.4 2008/01/09 17:10:47 steve Exp $
+# $Id: genhost.pl,v 1.5 2008/01/09 19:40:38 steve Exp $
 
 use strict;
+use warnings;
 
 my $host=shift;
 
@@ -13,14 +14,31 @@ if (!$host) {
 
 my @fs;
 
-open(DF, "ssh $host df |");
+#open(DF, "ssh $host df |");
 
-while (<DF>) {
-    my @foo=split;
-    push(@fs, $foo[$#foo]) if ($foo[0]=~/^\/dev\// and $foo[$#foo] ne "/tmp");
+#while (<DF>) {
+#    my @foo=split;
+#    push(@fs, $foo[$#foo]) if ($foo[0]=~/^\/dev\// and $foo[$#foo] ne "/tmp");
+#}
+
+#close(DF);
+
+my @df=`ssh $host df` or die "Failed to run df: $!\n";
+shift @df;
+
+for (my $n=0;$n<@df;$n++) {
+    chomp $df[$n];
+    if ($df[$n]=~/^\s/) {
+        $df[$n-1].=$df[$n];
+        splice(@df,$n,1);
+        $n--;
+    }
 }
 
-close(DF);
+for my $n (@df) {
+    my @foo=split ' ', $n;
+    push(@fs, $foo[$#foo]) if ($foo[0]=~/^\/dev\// and $foo[$#foo] ne "/tmp");
+}
 
 print "# filesystem\tcommand\n";
 
