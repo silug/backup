@@ -1,0 +1,4 @@
+* Using Net::Ping, ping host before trying to back it up.
+* Figure out some way to support ssh tunnelling without too many hoops.
+* Make a list of all files after a backup run.  Save this in .archive.
+* Don't update .host-last-updated if we can't connect to host.
