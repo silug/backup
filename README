@@ -1,0 +1,137 @@
+NAME
+    backup - automates copies of remote filesystems
+
+SYNOPSIS
+    backup [ <options> ]
+
+DESCRIPTION
+    This script is designed to take advantage of the fact that disk is
+    cheap. The idea is to have a system with enough disk to make a duplicate
+    of whatever data you care about.
+
+    By default, this will be done filesystem-by-filesystem with rsync
+    running over ssh, but the mechanism is flexible enough to back up just
+    about anything.
+
+OPTIONS
+    --extraflags=*flags*
+        Add *flags* to rsync (or whatever the backup command is set to).
+
+        In the past, this was especially useful for occasionally running
+        rsync with `--delete' (`--extraflags=--delete'), but now that this
+        program saves backup copies of everything, that's part of the
+        default command.
+
+        To add multiple options, use `--extraflags="--option1 --option2"' or
+        use `--extraflags' multiple times.
+
+    --host=*host*
+        Only backup *host*. (This can be used multiple times to backup
+        multiple hosts.)
+
+        The default is to backup all hosts.
+
+    --maxchildren=*number*
+        Backup up to *number* systems at once.
+
+    --backupdir=*path*
+        The script creates directories under *path* for each system.
+
+    --configfile=*filename*
+        Use *filename* for the config file. The default is /etc/backup.conf.
+
+    --configdir=*path*
+        Look for files describing what will be backed up under *path*. The
+        default is /etc/backup.d.
+
+        This script will look for directories named `monthly', `weekly',
+        `daily', and `unscheduled' under this directory. The files must be
+        under those directories.
+
+    --verbose
+        Makes rsync more verbose (equivalent to `--extraflags="--verbose
+        --progress"'). In a future revision, it might also make this script
+        a bit more verbose.
+
+    --debug
+        Spews lots of debugging information as the program runs. It might be
+        useful when debugging problems, or it might not.
+
+        This is equivalent to adding "debug=yes" to the config file.
+
+    --timeout
+        Sets the I/O timeout in seconds for rsync.
+
+    --daily
+        Run daily backups. This is the default if no hosts or other schedule
+        (`--weekly' or `--monthly') are specified.
+
+    --weekly
+        Run weekly backups.
+
+    --monthly
+        Run monthly backups.
+
+FILES
+    /etc/backup.conf
+        Configuration options can be given in this file in the form
+
+            parameter = value
+
+        debug
+            Setting this option to "yes" is equivalent to adding --debug to
+            the command-line.
+
+        default command
+            This can be used to specify an alternative default command.
+            Certain special strings can be used, including `DEFAULT'. See
+            "COMMANDS".
+
+        backupdir
+            This is equivalent to the --backupdir command-line option.
+
+        maxchildren
+            This is equivalent to the --maxchildren command-line option.
+
+        configdir
+            This is equivalent to the --configdir command-line option.
+
+        timeout
+            This is equivalent to the --timeout command-line option.
+
+    /etc/backup.d/*
+        Each host to be backed up should have a file under this directory.
+        The file's name must be the name of the host to backup.
+
+        The format of the file is
+
+            /path/to/backup     command
+
+        The command is optional.
+
+COMMANDS
+    Any commands to run specified in the configuration files will have the
+    following substitutions performed on them:
+
+    `DEFAULT'
+        This will be replaced with the default command.
+
+    `EXTRAFLAGS'
+        This will be replaced with any flags specified with --extraflags on
+        the command line.
+
+    `HOST'
+        This will be replaced with the name of the host being backed up.
+
+    `PATH'
+        This will be replaced with the path being backed up.
+
+    All commands are run from the directory where backups for that host and
+    filesystem should be stored.
+
+SEE ALSO
+    rsync(1), ssh(1), run1(1), mount(8), smbmount(8), umount(8)
+
+AUTHOR
+    Steven Pritchard <steve@silug.org>
+
