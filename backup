@@ -58,7 +58,7 @@ sub linktree($$);
 sub dup_dir($$);
 
 $rsync="rsync";
-$default_backup_command="RSYNC -e 'ssh -c blowfish-cbc' -axHS"
+$default_backup_command="RSYNC -axHS"
                       . " HOST:PATH/. ."
                       . " --numeric-ids --timeout=TIMEOUT --partial"
                       . " --exclude /lost+found/ --exclude /.journal"
